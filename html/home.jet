@@ -40,13 +40,16 @@
                         <label for ="message" >Message:</label>
                         <input type="text" name="message" id="message" class="form-control" autocomplete="off">
                     </div>
-
+                    <hr>
                     <a href="javascript:void(0);" id="sendBtn" class="btn btn-outline-secondary">Send Message</a>
 
                     <input type="hidden" name="action" id="action">
 
-                    <hr>
-                    <div class="chatbox" id="output">
+                    <div id="status" class="mt-2 float-end">
+
+                    </div>
+
+                    <div class="chatbox mt-3" id="output">
 
                     </div>
                 </div>
@@ -83,16 +86,24 @@
     document.addEventListener("DOMContentLoaded", function(){
         socket= new ReconnectingWebSocket("ws://127.0.0.1:8080/ws",null,{debug: true,reconnectInterval: 3000});
 
+        const offlline = `<span class="badge bg-danger">Not Connected</span>`
+        const online = `<span class="badge bg-success">Connected</span>`
+        let statusDiv= document.getElementById("status");
+
+
         socket.onopen = () => {
             console.log("Successfully connected");
+            statusDiv.innerHTML=online;
         }
 
         socket.onclose = () => {
             console.log("Connection closed");
+            statusDiv.innerHTML=offlline;
         }
 
         socket.onerror =error => {
             console.log("there was an error");
+            statusDiv.innerHTML=offlline;
         }
 
         socket.onmessage = msg => {
