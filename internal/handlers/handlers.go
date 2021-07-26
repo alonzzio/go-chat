@@ -1,11 +1,17 @@
 package handlers
 
 import (
+	"fmt"
 	"github.com/CloudyKit/jet/v6"
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"sort"
 )
+
+var wsChan = make(chan WsPayload)
+
+var clients = make(map[WebSocketConnection]string)
 
 var views = jet.NewSet(
 	jet.NewOSFileSystemLoader("./html"),
@@ -32,9 +38,10 @@ type WebSocketConnection struct {
 
 // WsJsonResponse defines the response send back from web socket
 type WsJsonResponse struct {
-	Action      string `json:"action"`
-	Message     string `json:"message"`
-	MessageType string `json:"message_type"`
+	Action         string   `json:"action"`
+	Message        string   `json:"message"`
+	MessageType    string   `json:"message_type"`
+	ConnectedUsers []string `json:"connected_users"`
 }
 
 type WsPayload struct {
@@ -54,9 +61,77 @@ func WsEndPoint(w http.ResponseWriter, r *http.Request) {
 	log.Println("Client connected to endpoint")
 	var response WsJsonResponse
 	response.Message = `<em><small>Connected to Server </small></em>`
+
+	conn := WebSocketConnection{Conn: ws}
+	clients[conn] = ""
+
 	err = ws.WriteJSON(response)
 	if err != nil {
 		log.Println(err)
+	}
+
+	go ListenForWs(&conn)
+}
+
+func ListenForWs(conn *WebSocketConnection) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Error", fmt.Sprintf("%v", r))
+		}
+	}()
+
+	var payload WsPayload
+
+	for {
+		err := conn.ReadJSON(&payload)
+		if err != nil {
+			// do nothing
+		} else {
+			payload.Conn = *conn
+			wsChan <- payload
+		}
+	}
+}
+
+func getUserList() []string {
+	var userList []string
+	for _, x := range clients {
+		userList = append(userList, x)
+	}
+	sort.Strings(userList)
+	return userList
+}
+
+func broadcastToAll(response WsJsonResponse) {
+	for client := range clients {
+		err := client.WriteJSON(response)
+		if err != nil {
+			log.Println("Websocket  err")
+			_ = client.Close()
+			delete(clients, client)
+		}
+	}
+}
+
+func ListenToWsChannel() {
+	var response WsJsonResponse
+	for {
+		e := <-wsChan
+
+		switch e.Action {
+		case "username":
+			// get a list of all users and send it back via broadcast function
+			clients[e.Conn] = e.Username
+			users := getUserList()
+			response.Action = "list_users"
+			response.ConnectedUsers = users
+			broadcastToAll(response)
+		}
+
+		//response.Action = "Got here"
+		//response.Message = fmt.Sprintf("Some message and action was %s", e.Action)
+		//broadcastToAll(response)
+
 	}
 }
 
